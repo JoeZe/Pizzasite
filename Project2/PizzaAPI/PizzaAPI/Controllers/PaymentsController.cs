@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +12,7 @@ namespace PizzaAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [EnableCors("CorsPolicy")]
     public class PaymentsController : ControllerBase
     {
         private readonly PizzaDbContext _context;
@@ -24,7 +26,7 @@ namespace PizzaAPI.Controllers
         [HttpGet]
         public IEnumerable<Payment> GetPayment()
         {
-            return _context.Payment;
+            return _context.Payment.Include("Customer");
         }
 
         // GET: api/Payments/5
@@ -86,7 +88,8 @@ namespace PizzaAPI.Controllers
         public async Task<IActionResult> PostPayment([FromRoute] int id, [FromBody] Payment payment)
         {
             //payment.Customer = SearchCustomer(id);
-           // payment.CustomerId = customer.CustomerId;
+            // payment.CustomerId = customer.CustomerId;
+            payment.CustomerId = id;
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);

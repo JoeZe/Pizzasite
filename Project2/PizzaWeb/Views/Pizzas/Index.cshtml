@@ -4,11 +4,25 @@
     ViewData["Title"] = "Index";
 }
 
-<h2>Index</h2>
+    <head>
+        <link href="https://fonts.googleapis.com/css?family=Comfortaa&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="~/css/Table.css" />
+        <style>
 
-<p>
-    <a asp-action="Create">Create New</a>
-</p>
+            body {
+                font-family: 'Comfortaa', cursive;
+            }
+        </style>
+    </head>
+
+
+
+
+<body>
+
+<h2>Pizza</h2>
+<br />
+<a class="btn" asp-action="Create">Create New</a>
 <table class="table">
     <thead>
         <tr>
@@ -33,7 +47,6 @@
             <th>
                 @Html.DisplayNameFor(model => model.Topping3)
             </th>
-            <th></th>
         </tr>
     </thead>
     <tbody>
@@ -61,7 +74,7 @@
                 @Html.DisplayFor(modelItem => item.Topping3)
             </td>
             <td>
-                <a asp-action="Edit" asp-route-id="@item.PizzaId">Edit</a> |
+                <a asp-action="Edit" asp-route-id="@item.PizzaId">Update</a> |
                 <a asp-action="Details" asp-route-id="@item.PizzaId">Details</a> |
                 <a asp-action="Delete" asp-route-id="@item.PizzaId">Delete</a>
             </td>
@@ -69,3 +82,6 @@
 }
     </tbody>
 </table>
+
+
+</body>

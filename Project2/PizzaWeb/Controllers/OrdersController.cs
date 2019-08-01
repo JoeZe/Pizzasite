@@ -12,11 +12,23 @@ using Newtonsoft.Json;
 using PizzaAPI.Model;
 using System.Threading;
 using System.Net;
+using PizzaWeb.catalog;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 
 namespace PizzaWeb.Controllers
 {
+    [Authorize]
     public class OrdersController : Controller
     {
+
+        private readonly CatalogContext _context;
+
+        public OrdersController(CatalogContext context)
+        {
+            _context = context;
+        }
+
         private static string _url = "http://localhost:56782/api/";
         // GET: Orders
         public IActionResult Index()
@@ -32,10 +44,10 @@ namespace PizzaWeb.Controllers
                 // Customer c = Customer.FirstOrDefault(x => x.UserId == CurrentUserId);
                 //HTTP GET
                 //Request.ContentType = User.Claims.First().Value;
-                
-                var responseTask = client.GetAsync("Orders" );       
+
+                var responseTask = client.GetAsync("Orders");
                 responseTask.Wait();
-                
+
                 var result = responseTask.Result;
                 if (result.IsSuccessStatusCode)
                 {
@@ -59,13 +71,11 @@ namespace PizzaWeb.Controllers
                     ModelState.AddModelError(string.Empty, "Server error. Please contact administrator.");
                 }
                 //int userid = Convert.ToInt32(User.Claims.First().Value);
-                Customer c = SearchCustomerId(User.Claims.First().Value);
+                //Customer c = SearchCustomerId(User.Claims.First().Value);
                 //Orders = Orders.Where(x => x.Customer.CustomerId == c.CustomerId);
                 //ViewBag.CustomerID = c.CustomerId;
-                if (Orders == null)
-                {
-                    Orders = Enumerable.Empty<Order>();
-                }
+                var userId = Convert.ToInt32(User.FindFirstValue(ClaimTypes.NameIdentifier));
+                Orders = Orders.Where(u => u.Customer.UserId == userId);
                 return View(Orders);
             }
         }
@@ -86,8 +96,42 @@ namespace PizzaWeb.Controllers
         public IActionResult Create()
         {
             //ViewData["CustomerId"] = new SelectList(_context.Customer, "id", "id");
-            return View();
+            double total = Convert.ToDouble(this.RouteData.Values.Values.Last());
+            Order order = new Order();
+            order.TotalPrice = total;
+            return View(order);
         }
+
+        //public IActionResult SubmitOrder(double total)
+        //{
+
+        //    Order o = new Order();
+        //    o.CustomerId = Convert.ToInt32(User.FindFirstValue(ClaimTypes.NameIdentifier));
+        //    //o.Duetime = DateTime.Now;
+        //    o.Customer = SearchCustomerId(o.CustomerId.ToString());
+        //    //o.OrderDate = DateTime.Now;
+        //    List<Pizza> submitOrderPizza = new List<Pizza>();
+            
+        //    foreach (var item in _context.TempPizzas)
+        //    {
+        //        //customer id is orderid in Webapi temp database
+        //        if (o.CustomerId == item.OrderId)
+        //        {
+        //            //submitOrderPizza.Add(item);
+        //            //remove the item from in memory storage
+        //           // _context.TempPizzas.Remove(item);
+        //            //_context.SaveChanges();
+        //        }
+        //    }
+        //    o.Pizza = submitOrderPizza;
+            
+        //    //o.TotalPrice = o.TotalPrice();
+        //    //await Create(o);
+
+        //    return RedirectToAction("Create/"+ total );
+        //}
+
+
 
         // POST: Orders/Create
         // To protect from overposting attacks, please enable the specific properties you want to bind to, for 
@@ -98,7 +142,7 @@ namespace PizzaWeb.Controllers
         {
             order.OrderDate = DateTime.Now;
             order.Duetime = DateTime.Now.AddMinutes(20);
-            //order.Customer = c;
+            order.TotalPrice= Convert.ToDouble(this.RouteData.Values.Values.Last());
             using (var client = new HttpClient())
             {
                 client.DefaultRequestHeaders.Accept.Clear();
@@ -109,25 +153,80 @@ namespace PizzaWeb.Controllers
                  {
                      DateFormatHandling = DateFormatHandling.IsoDateFormat
                  });
-                //int id = Convert.ToInt32(User.Claims.First().Value);
+                int id = Convert.ToInt32(User.Claims.First().Value);
                 client.BaseAddress = new Uri(_url);
-       
-                Customer c = SearchCustomerId(User.Claims.First().Value);
-                order.CustomerId = c.CustomerId;
 
-                var postTask = client.PostAsJsonAsync("Orders", order);
-
-                postTask.Wait();
-                var result = postTask.Result;
-                if (result.IsSuccessStatusCode)
+                Customer cust = SearchCustomerId(User.Claims.First().Value);
+                if (cust == null)
                 {
-                    return RedirectToAction("Index");
+
+                    ModelState.AddModelError(string.Empty, "Customer not found! Please create a customer before ordering.");
                 }
-                ModelState.AddModelError(string.Empty, "Server Error. Please contact administrator.");
+                else
+                {
+                    order.CustomerId = cust.CustomerId;
+                    var postTask = client.PostAsJsonAsync("Orders/" + id, order);
+
+                    postTask.Wait();
+                    var result = postTask.Result;
+                    if (result.IsSuccessStatusCode)                    
+                    {
+                        //new order id need to test
+                        int orderid = Convert.ToInt32(result.Headers.Location.Segments[3]) ;
+                        CreateAllPizza(orderid);
+                        return RedirectToAction("create", "payments", new { id = orderid });
+                    }
+                    ModelState.AddModelError(string.Empty, "Server Error. Please contact administrator.");
+                }
                 ////
             }
 
             return View(order);
+        }
+
+        private void CreateAllPizza(int orderid)
+        {
+            int pizzaid;
+            Order o = SearchOrder(orderid);
+            o.CustomerId = Convert.ToInt32(User.FindFirstValue(ClaimTypes.NameIdentifier));
+            //o.Duetime = DateTime.Now;
+            o.Customer = SearchCustomerId(o.CustomerId.ToString());
+            //o.OrderDate = DateTime.Now;
+            List<Pizza> submitOrderPizza = new List<Pizza>();
+            
+            foreach (var pizza in _context.TempPizzas)
+            {
+                //customer id is orderid in Webapi temp database
+                if (o.CustomerId == pizza.OrderId)
+                {
+                    using (var client = new HttpClient())
+                    {
+                        client.BaseAddress = new Uri(_url);
+                        //HTTP GET
+                        pizzaid = pizza.PizzaId;
+                        pizza.OrderId = orderid;
+                        pizza.PizzaId =0 ;
+                        // PizzaAPI.Controllers.CustomerController c = new PizzaAPI.Controllers.CustomerController(_context);
+                        var postTask = client.PostAsJsonAsync("Pizzas", pizza);
+                        postTask.Wait();
+
+                        var result = postTask.Result;
+                        if (!result.IsSuccessStatusCode)
+                        {
+                            ModelState.AddModelError(string.Empty, "Server Error. Please contact administrator.");
+                        }
+                        
+                    }
+                    pizza.PizzaId = pizzaid;
+                     submitOrderPizza.Add(pizza);
+                    //remove the item from in memory storage
+                    _context.TempPizzas.Remove(pizza);
+                    _context.SaveChanges();
+                }
+            }
+
+            o.Pizza = submitOrderPizza;
+
         }
 
         // GET: Orders/Edit/5
@@ -193,7 +292,7 @@ namespace PizzaWeb.Controllers
         // POST: Orders/Delete/5
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
+        public IActionResult DeleteConfirmed(int id)
         {
             using (var client = new HttpClient())
             {
@@ -278,5 +377,13 @@ namespace PizzaWeb.Controllers
 
             return customers;
         }
+
+        /*[HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Orderpost(Microsoft.AspNetCore.Http.FormCollection form)
+        {
+
+            return Content("ok");
+        }*/
     }
 }
